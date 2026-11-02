@@ -1,12 +1,13 @@
 use imagequant::{Attributes, Image, RGBA};
 use js_sys::{Array, Uint8Array, Uint8ClampedArray};
-use png::{BitDepth, ColorType, Decoder, Encoder, Transformations};
+use png::{ColorType, Decoder, Encoder, Transformations};
 use std::io::Cursor;
 use wasm_bindgen::prelude::*;
 
 mod animation;
 mod animation_bindings;
 mod metadata;
+mod png_encode;
 mod png_input;
 
 fn checked_integer(value: f64, min: u32, max: u32, name: &str) -> Result<u32, JsValue> {
@@ -451,8 +452,10 @@ pub fn encode_palette_to_png(
     let mut png_data = Vec::new();
     {
         let mut encoder = Encoder::new(Cursor::new(&mut png_data), w as u32, h as u32);
-        encoder.set_color(ColorType::Indexed);
-        encoder.set_depth(BitDepth::Eight);
+        png_encode::configure(&mut encoder);
+
+        let (bits, depth) = png_encode::bit_depth_for(palette_colors.len());
+        encoder.set_depth(depth);
 
         // Set up palette and tRNS chunk
         let mut palette_rgb = Vec::new();
@@ -472,8 +475,7 @@ pub fn encode_palette_to_png(
             .write_header()
             .map_err(|e| JsValue::from_str(&format!("Failed to write PNG header: {}", e)))?;
 
-        writer
-            .write_image_data(&indices)
+        png_encode::write_indices(&mut writer, bits, &indices, w, h)
             .map_err(|e| JsValue::from_str(&format!("Failed to write PNG data: {}", e)))?;
     }
 

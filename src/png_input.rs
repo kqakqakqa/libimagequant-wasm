@@ -2,9 +2,10 @@
 use crate::{
     animation::frame_pixels,
     metadata::{self, Policy},
+    png_encode,
 };
 use imagequant::{Attributes, Image, RGBA};
-use png::{BitDepth, ColorType, Encoder};
+use png::Encoder;
 
 pub(crate) struct ResultImage {
     pub width: u32,
@@ -71,8 +72,11 @@ pub(crate) fn quantize(
     let mut png = Vec::new();
     {
         let mut encoder = Encoder::with_info(&mut png, info).map_err(|e| e.to_string())?;
-        encoder.set_color(ColorType::Indexed);
-        encoder.set_depth(BitDepth::Eight);
+        png_encode::configure(&mut encoder);
+
+        let (bits, depth) = png_encode::bit_depth_for(palette.len());
+        encoder.set_depth(depth);
+
         encoder.set_palette(
             palette
                 .iter()
@@ -83,9 +87,13 @@ pub(crate) fn quantize(
             encoder.set_trns(palette[..=last].iter().map(|c| c.a).collect::<Vec<_>>());
         }
         let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
-        writer
-            .write_image_data(&indices)
-            .map_err(|e| e.to_string())?;
+        png_encode::write_indices(
+            &mut writer,
+            bits,
+            &indices,
+            width as usize,
+            height as usize,
+        )?;
         writer.finish().map_err(|e| e.to_string())?;
     }
     Ok(ResultImage {
